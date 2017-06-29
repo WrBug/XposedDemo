@@ -8,11 +8,14 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 
 import de.robv.android.xposed.IXposedHookInitPackageResources;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XC_MethodReplacement;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_InitPackageResources;
@@ -25,59 +28,36 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
  * @author wrbug
  * @since 2017/4/20
  */
-public class XposedInit implements IXposedHookLoadPackage, IXposedHookInitPackageResources {
+public class XposedInit implements IXposedHookLoadPackage {
+    private static String PACKAGE_NAME = "com.wrbug.xposeddemo";
+
     @Override
     public void handleLoadPackage(final XC_LoadPackage.LoadPackageParam lpparam) {
-        if (lpparam.packageName.equals("com.wrbug.xposeddemo")) {
-            XposedHelpers.findAndHookMethod("com.wrbug.xposeddemo.MainActivity", lpparam.classLoader, "onCreate", Bundle.class, new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                    //不能通过Class.forName()来获取Class ，在跨应用时会失效
-                    Class c = lpparam.classLoader.loadClass("com.wrbug.xposeddemo.MainActivity");
-                    Field field = c.getDeclaredField("textView");
-                    field.setAccessible(true);
-                    //param.thisObject 为执行该方法的对象，在这里指MainActivity
-                    TextView textView = (TextView) field.get(param.thisObject);
-                    textView.setText("Hello Xposed");
-                }
-            });
-        }
-    }
+        if (lpparam.packageName.equals(PACKAGE_NAME)) {
+            try {
+                //获取class类
+                Class c = XposedHelpers.findClass("com.wrbug.xposeddemo.XposedTest", lpparam.classLoader);
+                //获取str字段
+                Field strField = XposedHelpers.findField(c, "str");
+                //可以省略setAccessible（true）XposedHelpers已经执行该操作
+                strField.setAccessible(true);
+                //打印str值，下同
+                XposedBridge.log(strField.get(null).toString());
 
-    @Override
-    public void handleInitPackageResources(XC_InitPackageResources.InitPackageResourcesParam resparam) throws Throwable {
-        if (resparam.packageName.equals("com.wrbug.xposeddemo")) {
-            resparam.res.hookLayout(resparam.packageName, "layout", "activity_main", new XC_LayoutInflated() {
-                @Override
-                public void handleLayoutInflated(LayoutInflatedParam liparam) throws Throwable {
-                    printView((ViewGroup) liparam.view, 1);
-                }
-            });
-            resparam.res.hookLayout(resparam.packageName, "layout", "view_demo", new XC_LayoutInflated() {
-                @Override
-                public void handleLayoutInflated(LayoutInflatedParam liparam) throws Throwable {
-                    XposedBridge.log("hook view_demo");
-                }
-            });
-        }
-    }
+                //调用静态方法
+                XposedHelpers.callStaticMethod(c, "staticTest", "xposedInvoke");
+                XposedBridge.log(strField.get(null).toString());
 
-    //遍历资源布局树，并打印出来
-    private void printView(ViewGroup view, int deep) {
-        String viewgroupDeepFormat = "";
-        String viewDeepFormat = "";
-        for (int i = 0; i < deep - 1; i++) {
-            viewgroupDeepFormat += "\t";
-        }
-        viewDeepFormat = viewgroupDeepFormat + "\t";
-        XposedBridge.log(viewgroupDeepFormat + view.toString());
-        int count = view.getChildCount();
-        for (int i = 0; i < count; i++) {
-            if (view.getChildAt(i) instanceof ViewGroup) {
-                printView((ViewGroup) view.getChildAt(i), deep + 1);
-            } else {
-                XposedBridge.log(viewDeepFormat + view.getChildAt(i).toString());
+                //获取实例
+                Constructor constructor = XposedHelpers.findConstructorBestMatch(c);
+                constructor.setAccessible(true);
+                Object instance = constructor.newInstance();
+                XposedHelpers.callMethod(instance, "test");
+                XposedBridge.log(strField.get(null).toString());
+            } catch (Exception e) {
+                e.printStackTrace();
             }
         }
+
     }
 }
